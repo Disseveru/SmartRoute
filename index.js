@@ -6,10 +6,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 const PRICE_USDC = process.env.PRICE_USDC || '0.02';
-const CDP_API_KEY_NAME = process.env.CDP_API_KEY_NAME;
-const CDP_API_KEY_PRIVATE_KEY = process.env.CDP_API_KEY_PRIVATE_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 // Health check
 app.get('/', (req, res) => {
@@ -18,11 +17,13 @@ app.get('/', (req, res) => {
     status: 'live',
     price: `${PRICE_USDC} USDC per request`,
     endpoint: '/ai',
-    description: 'Pay-per-use AI inference router. Send a prompt, get a response.'
+    description: 'Pay-per-use AI inference. Send a prompt, get a response.',
+    models: ['gemini-2.0-flash', 'gemini-1.5-pro'],
+    payment: 'x402 USDC on Base'
   });
 });
 
-// Payment check middleware
+// Payment check
 function requirePayment(req, res, next) {
   const paymentHeader = req.headers['x-payment'];
   if (!paymentHeader) {
@@ -37,7 +38,7 @@ function requirePayment(req, res, next) {
   next();
 }
 
-// Main AI endpoint
+// AI endpoint
 app.post('/ai', requirePayment, async (req, res) => {
   const { prompt, model } = req.body;
 
@@ -45,30 +46,33 @@ app.post('/ai', requirePayment, async (req, res) => {
     return res.status(400).json({ error: 'prompt is required' });
   }
 
+  if (!GEMINI_API_KEY) {
+    return res.status(500).json({ error: 'GEMINI_API_KEY not configured' });
+  }
+
   try {
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    const selectedModel = model || 'gemini-2.0-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${GEMINI_API_KEY}`;
+
+    const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: model || 'llama3-8b-8192',
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 1024
+        contents: [{ parts: [{ text: prompt }] }]
       })
     });
 
     const data = await response.json();
 
     if (data.error) {
-      return res.status(500).json({ error: data.error });
+      return res.status(500).json({ error: data.error.message });
     }
 
+    const result = data.candidates[0].content.parts[0].text;
+
     res.json({
-      result: data.choices[0].message.content,
-      model_used: data.model,
-      tokens_used: data.usage?.total_tokens,
+      result,
+      model_used: selectedModel,
       charged: `${PRICE_USDC} USDC`
     });
 
