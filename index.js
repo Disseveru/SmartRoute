@@ -8,10 +8,10 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 8080;
 const PRICE_USDC = process.env.PRICE_USDC || '0.02';
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
-const ALLOWED_MODELS = ['gemini-2.0-flash', 'gemini-1.5-pro'];
-const DEFAULT_MODEL = 'gemini-2.0-flash';
+const ALLOWED_MODELS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'];
+const DEFAULT_MODEL = 'llama-3.3-70b-versatile';
 
 // Health check
 app.get('/', (req, res) => {
@@ -57,8 +57,8 @@ app.post('/ai', requirePayment, async (req, res) => {
     return res.status(400).json({ error: 'prompt is required' });
   }
 
-  if (!GEMINI_API_KEY) {
-    return res.status(500).json({ error: 'GEMINI_API_KEY not configured' });
+  if (!GROQ_API_KEY) {
+    return res.status(500).json({ error: 'GROQ_API_KEY not configured' });
   }
 
   // Validate model against allowlist to prevent arbitrary strings in the URL
@@ -71,13 +71,16 @@ app.post('/ai', requirePayment, async (req, res) => {
 
   try {
     const selectedModel = model || DEFAULT_MODEL;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${GEMINI_API_KEY}`;
 
-    const response = await fetch(url, {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${GROQ_API_KEY}`
+      },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }]
+        model: selectedModel,
+        messages: [{ role: 'user', content: prompt }]
       })
     });
 
@@ -88,16 +91,15 @@ app.post('/ai', requirePayment, async (req, res) => {
     }
 
     if (
-      !data.candidates ||
-      !data.candidates[0] ||
-      !data.candidates[0].content ||
-      !data.candidates[0].content.parts ||
-      !data.candidates[0].content.parts[0]
+      !data.choices ||
+      !data.choices[0] ||
+      !data.choices[0].message ||
+      !data.choices[0].message.content
     ) {
       return res.status(500).json({ error: 'Unexpected response from AI provider' });
     }
 
-    const result = data.candidates[0].content.parts[0].text;
+    const result = data.choices[0].message.content;
 
     res.json({
       result,

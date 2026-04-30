@@ -17,11 +17,11 @@ POST https://smartroute-production.up.railway.app/ai
 ```json
 {
   "prompt": "your question here",
-  "model": "gemini-2.0-flash"
+  "model": "llama-3.3-70b-versatile"
 }
 ```
 
-The `model` field is optional. If omitted, `gemini-2.0-flash` is used.
+The `model` field is optional. If omitted, `llama-3.3-70b-versatile` is used.
 
 ## Payment
 Include the `x-payment` header with a valid x402 USDC payment on the Base network.  
@@ -30,14 +30,15 @@ Price: **0.02 USDC per request**
 ## Models available
 | Model | Description |
 |---|---|
-| `gemini-2.0-flash` | Fast responses (default) |
-| `gemini-1.5-pro` | More powerful, longer context |
+| `llama-3.3-70b-versatile` | Powerful & accurate (default) |
+| `llama-3.1-8b-instant` | Ultra-fast, lightweight |
+| `mixtral-8x7b-32768` | Long context (32k tokens) |
 
 ## Response
 ```json
 {
   "result": "AI-generated answer",
-  "model_used": "gemini-2.0-flash",
+  "model_used": "llama-3.3-70b-versatile",
   "charged": "0.02 USDC"
 }
 ```
@@ -54,7 +55,7 @@ See `.env.example` for all required variables.
 
 | Variable | Description | Default |
 |---|---|---|
-| `GEMINI_API_KEY` | Your Google Gemini API key | *(required)* |
+| `GROQ_API_KEY` | Your Groq API key (free at console.groq.com) | *(required)* |
 | `PORT` | Port the server listens on | `8080` |
 | `PRICE_USDC` | Price per request in USDC | `0.02` |
 
