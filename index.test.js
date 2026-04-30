@@ -1,20 +1,41 @@
 /**
- * SmartRoute402 – unit/integration tests
+ * SmartRoute402 - unit/integration tests
  * Run with: npm test
  *
- * The Groq API is mocked so no real network calls are made.
+ * node-fetch and x402-express are mocked so no real network calls are made.
  */
 
 const request = require('supertest');
 
-// ── Mock node-fetch before the app is loaded ──────────────────────────────────
+// -- Mock x402-express before the app is loaded -------------------------------
+// Simulates the full x402 middleware contract:
+//   No x-payment header  -> 402
+//   Header present       -> next() (real verification happens via facilitator in prod)
+jest.mock('x402-express', () => ({
+  paymentMiddleware: (_payTo, routes) => (req, res, next) => {
+    const routeKey = `${req.method.toUpperCase()} ${req.path}`;
+    if (!routes[routeKey]) return next();
+    if (!req.headers['x-payment']) {
+      return res.status(402).json({
+        error: 'Payment Required',
+        price: process.env.PRICE_USDC || '0.02',
+        currency: 'USDC',
+        network: 'base',
+      });
+    }
+    next();
+  },
+}));
+
+// -- Mock node-fetch before the app is loaded ---------------------------------
 jest.mock('node-fetch');
 const fetch = require('node-fetch');
 
-// ── Load the app (must come after mock setup) ─────────────────────────────────
+// -- Load the app (must come after mock setup) ---------------------------------
 let app;
 beforeAll(() => {
   process.env.GROQ_API_KEY = 'test-key';
+  process.env.PAYMENT_ADDRESS = '0x1234567890123456789012345678901234567890';
   app = require('./index');
 });
 
@@ -22,7 +43,7 @@ afterEach(() => {
   jest.resetAllMocks();
 });
 
-// ── Helper: build a mock Groq response ────────────────────────────────────────
+// -- Helper: build a mock Groq response ---------------------------------------
 function mockGroqResponse(content) {
   return {
     json: async () => ({
@@ -31,9 +52,9 @@ function mockGroqResponse(content) {
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GET /  –  health check
-// ─────────────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// GET /  --  health check
+// ---------------------------------------------------------------------------
 describe('GET /', () => {
   it('returns service info with status live and all three models', async () => {
     const res = await request(app).get('/');
@@ -48,10 +69,10 @@ describe('GET /', () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// POST /ai  –  payment guard
-// ─────────────────────────────────────────────────────────────────────────────
-describe('POST /ai – payment guard', () => {
+// ---------------------------------------------------------------------------
+// POST /ai  --  payment guard
+// ---------------------------------------------------------------------------
+describe('POST /ai - payment guard', () => {
   it('returns 402 when x-payment header is missing', async () => {
     const res = await request(app)
       .post('/ai')
@@ -61,10 +82,10 @@ describe('POST /ai – payment guard', () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// POST /ai  –  input validation
-// ─────────────────────────────────────────────────────────────────────────────
-describe('POST /ai – input validation', () => {
+// ---------------------------------------------------------------------------
+// POST /ai  --  input validation
+// ---------------------------------------------------------------------------
+describe('POST /ai - input validation', () => {
   it('returns 400 when prompt is missing', async () => {
     const res = await request(app)
       .post('/ai')
@@ -98,10 +119,10 @@ describe('POST /ai – input validation', () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// POST /ai  –  successful inference
-// ─────────────────────────────────────────────────────────────────────────────
-describe('POST /ai – successful inference', () => {
+// ---------------------------------------------------------------------------
+// POST /ai  --  successful inference
+// ---------------------------------------------------------------------------
+describe('POST /ai - successful inference', () => {
   it('returns result and model_used with default model when none specified', async () => {
     fetch.mockResolvedValueOnce(mockGroqResponse('The answer is 42.'));
 
@@ -116,7 +137,7 @@ describe('POST /ai – successful inference', () => {
     expect(res.body.charged).toMatch(/USDC/);
   });
 
-  it('forwards the x-payment header call through to the AI provider', async () => {
+  it('calls the correct Groq API URL with auth header', async () => {
     fetch.mockResolvedValueOnce(mockGroqResponse('pong'));
 
     await request(app)
@@ -131,10 +152,10 @@ describe('POST /ai – successful inference', () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// POST /ai  –  error handling
-// ─────────────────────────────────────────────────────────────────────────────
-describe('POST /ai – error handling', () => {
+// ---------------------------------------------------------------------------
+// POST /ai  --  error handling
+// ---------------------------------------------------------------------------
+describe('POST /ai - error handling', () => {
   it('returns 500 when Groq returns an error object', async () => {
     fetch.mockResolvedValueOnce({
       json: async () => ({ error: { message: 'rate limit exceeded' } })

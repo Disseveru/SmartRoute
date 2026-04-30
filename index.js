@@ -1,6 +1,7 @@
 const express = require('express');
 const fetch = require('node-fetch');
 const cors = require('cors');
+const { paymentMiddleware } = require('x402-express');
 
 const app = express();
 app.use(cors());
@@ -9,9 +10,44 @@ app.use(express.json());
 const PORT = process.env.PORT || 8080;
 const PRICE_USDC = process.env.PRICE_USDC || '0.02';
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const PAYMENT_ADDRESS = process.env.PAYMENT_ADDRESS;
+const FACILITATOR_URL = process.env.FACILITATOR_URL || 'https://x402.org/facilitator';
 
 const ALLOWED_MODELS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'];
 const DEFAULT_MODEL = 'llama-3.3-70b-versatile';
+
+// x402 payment verification for /ai.
+// paymentMiddleware handles the full lifecycle:
+//   • No payment header → 402 with payment requirements (amount, asset, network)
+//   • Valid header      → verifies + settles via the facilitator, then calls next()
+//   • Invalid header    → 402 with rejection reason
+if (PAYMENT_ADDRESS) {
+  app.use(
+    paymentMiddleware(
+      PAYMENT_ADDRESS,
+      {
+        'POST /ai': {
+          price: `$${PRICE_USDC}`,
+          network: 'base',
+          description: 'SmartRoute AI inference (Groq Llama 3)',
+        },
+      },
+      { url: FACILITATOR_URL }
+    )
+  );
+} else {
+  // No wallet address configured — block /ai with a clear error so the
+  // operator knows what to fix rather than silently accepting fake payments.
+  app.use((req, res, next) => {
+    if (req.method === 'POST' && req.path === '/ai') {
+      return res.status(500).json({
+        error: 'Payment gateway not configured',
+        instructions: 'Set the PAYMENT_ADDRESS environment variable to a Base wallet address that will receive USDC payments.',
+      });
+    }
+    next();
+  });
+}
 
 // Health check
 app.get('/', (req, res) => {
@@ -26,31 +62,8 @@ app.get('/', (req, res) => {
   });
 });
 
-// Payment check
-// Human step required: configure your x402 payment verifier credentials
-// in environment variables and replace the stub below with real verification.
-// See https://www.x402.org/ for integration details.
-function requirePayment(req, res, next) {
-  const paymentHeader = req.headers['x-payment'];
-  if (!paymentHeader) {
-    return res.status(402).json({
-      error: 'Payment Required',
-      price: PRICE_USDC,
-      currency: 'USDC',
-      network: 'base',
-      instructions: 'Include x-payment header with valid x402 payment'
-    });
-  }
-
-  // TODO: Replace this stub with real x402 payment verification.
-  // Example: call the x402 verifier service to confirm the payment token
-  // is valid, has not been replayed, and covers the correct amount (PRICE_USDC).
-  // Until then, the presence of the header is accepted as payment.
-  next();
-}
-
-// AI endpoint
-app.post('/ai', requirePayment, async (req, res) => {
+// AI endpoint — payment is enforced by paymentMiddleware above
+app.post('/ai', async (req, res) => {
   const { prompt, model } = req.body;
 
   if (!prompt) {

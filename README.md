@@ -56,6 +56,8 @@ See `.env.example` for all required variables.
 | Variable | Description | Default |
 |---|---|---|
 | `GROQ_API_KEY` | Your Groq API key (free at console.groq.com) | *(required)* |
+| `PAYMENT_ADDRESS` | Base wallet address to receive USDC payments | *(required)* |
+| `FACILITATOR_URL` | x402 facilitator endpoint for payment verification | `https://x402.org/facilitator` |
 | `PORT` | Port the server listens on | `8080` |
 | `PRICE_USDC` | Price per request in USDC | `0.02` |
 
