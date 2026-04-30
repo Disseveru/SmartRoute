@@ -112,6 +112,10 @@ app.post('/ai', requirePayment, async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`SmartRoute402 live on port ${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`SmartRoute402 live on port ${PORT}`);
+  });
+}
+
+module.exports = app;
