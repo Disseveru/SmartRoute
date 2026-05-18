@@ -12,11 +12,14 @@ app.use(express.json());
 const PORT = process.env.PORT || 8080;
 const PRICE_USDC_FALLBACK = process.env.PRICE_USDC;
 const PRICE_USD = process.env.PRICE_USD || PRICE_USDC_FALLBACK || '0.02';
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const ALLOWED_MODELS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'];
+const DEFAULT_MODEL = 'llama-3.3-70b-versatile';
+
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 const OWNERSHIP_PROOF_PLACEHOLDER = 'REPLACE_WITH_OWNERSHIP_PROOF';
 const PAYMENT_ADDRESS = process.env.PAYMENT_ADDRESS || ZERO_ADDRESS;
-const FACILITATOR_URL = process.env.FACILITATOR_URL || 'https://facilitator.x402.org';
+const FACILITATOR_URL = process.env.FACILITATOR_URL || 'https://x402.org/facilitator';
 const X402_NETWORK = process.env.X402_NETWORK || 'eip155:8453';
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 const AGENTCASH_OWNERSHIP_PROOF = process.env.AGENTCASH_OWNERSHIP_PROOF || OWNERSHIP_PROOF_PLACEHOLDER;
@@ -53,8 +56,6 @@ if (!IS_PRODUCTION && AGENTCASH_OWNERSHIP_PROOF === OWNERSHIP_PROOF_PLACEHOLDER)
 }
 
 const httpFacilitatorClient = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
-// Use a local supported-kinds response so unpaid requests can return deterministic 402 payloads
-// even when the remote facilitator is temporarily unreachable.
 const facilitatorClient = {
   verify: async (...args) => {
     try {
@@ -88,7 +89,7 @@ app.use(paymentMiddlewareFromConfig(
         network: X402_NETWORK,
         payTo: PAYMENT_ADDRESS
       },
-      description: 'Pay-per-use AI inference. Send a prompt, get a response.',
+      description: 'SmartRoute AI inference (Groq Llama 3)',
       unpaidResponseBody: () => ({
         contentType: 'application/json',
         body: PAYMENT_REQUIRED_TEMPLATE
@@ -104,8 +105,8 @@ app.use(paymentMiddlewareFromConfig(
                   body: {
                     type: 'object',
                     properties: {
-                      prompt: { type: 'string', minLength: 1, description: 'Prompt text to send to Gemini.' },
-                      model: { type: 'string', description: 'Optional Gemini model name.' }
+                      prompt: { type: 'string', minLength: 1, description: 'Prompt text to send to Groq.' },
+                      model: { type: 'string', enum: ALLOWED_MODELS, description: 'Optional Groq model name.' }
                     },
                     required: ['prompt']
                   }
@@ -135,7 +136,6 @@ app.use(paymentMiddlewareFromConfig(
   [{ network: X402_NETWORK, server: new ExactEvmScheme() }]
 ));
 
-// Health check
 app.get('/', (req, res) => {
   res.json({
     service: 'SmartRoute402',
@@ -144,7 +144,7 @@ app.get('/', (req, res) => {
     endpoint: '/ai',
     openapi: '/openapi.json',
     description: 'Pay-per-use AI inference. Send a prompt, get a response.',
-    models: ['gemini-2.0-flash', 'gemini-1.5-pro'],
+    models: ALLOWED_MODELS,
     payment: 'x402 USDC on Base'
   });
 });
@@ -170,7 +170,7 @@ app.get('/openapi.json', (req, res) => {
       title: 'SmartRoute402 API',
       version: '1.0.0',
       description: 'Pay-per-use AI inference API.',
-      'x-guidance': 'Use POST /ai with JSON body { "prompt": "<text>", "model": "gemini-2.0-flash" }. This route requires x402 payment.'
+      'x-guidance': 'Use POST /ai with JSON body { "prompt": "<text>", "model": "llama-3.3-70b-versatile" }. This route requires x402 payment.'
     },
     ...(OWNERSHIP_PROOFS.length > 0 ? { 'x-discovery': { ownershipProofs: OWNERSHIP_PROOFS } } : {}),
     servers: [{ url: BASE_URL }],
@@ -194,8 +194,8 @@ app.get('/openapi.json', (req, res) => {
                         body: {
                           type: 'object',
                           properties: {
-                            prompt: { type: 'string', minLength: 1, description: 'Prompt text to send to Gemini.' },
-                            model: { type: 'string', description: 'Optional Gemini model name.' }
+                            prompt: { type: 'string', minLength: 1, description: 'Prompt text to send to Groq.' },
+                            model: { type: 'string', enum: ALLOWED_MODELS, description: 'Optional Groq model name.' }
                           },
                           required: ['prompt']
                         }
@@ -227,8 +227,8 @@ app.get('/openapi.json', (req, res) => {
                 schema: {
                   type: 'object',
                   properties: {
-                    prompt: { type: 'string', minLength: 1, description: 'Prompt text to send to Gemini.' },
-                    model: { type: 'string', description: 'Optional Gemini model name.' }
+                    prompt: { type: 'string', minLength: 1, description: 'Prompt text to send to Groq.' },
+                    model: { type: 'string', enum: ALLOWED_MODELS, description: 'Optional Groq model name.' }
                   },
                   required: ['prompt']
                 }
@@ -262,7 +262,6 @@ app.get('/openapi.json', (req, res) => {
   });
 });
 
-// AI endpoint
 app.post('/ai', async (req, res) => {
   const { prompt, model } = req.body;
 
@@ -270,19 +269,29 @@ app.post('/ai', async (req, res) => {
     return res.status(400).json({ error: 'prompt is required' });
   }
 
-  if (!GEMINI_API_KEY) {
-    return res.status(500).json({ error: 'GEMINI_API_KEY not configured' });
+  if (!GROQ_API_KEY) {
+    return res.status(500).json({ error: 'GROQ_API_KEY not configured' });
+  }
+
+  if (model && !ALLOWED_MODELS.includes(model)) {
+    return res.status(400).json({
+      error: 'Invalid model',
+      allowed_models: ALLOWED_MODELS
+    });
   }
 
   try {
-    const selectedModel = model || 'gemini-2.0-flash';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${GEMINI_API_KEY}`;
+    const selectedModel = model || DEFAULT_MODEL;
 
-    const response = await fetch(url, {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${GROQ_API_KEY}`
+      },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }]
+        model: selectedModel,
+        messages: [{ role: 'user', content: prompt }]
       })
     });
 
@@ -292,19 +301,31 @@ app.post('/ai', async (req, res) => {
       return res.status(500).json({ error: data.error.message });
     }
 
-    const result = data.candidates[0].content.parts[0].text;
+    if (
+      !data.choices ||
+      !data.choices[0] ||
+      !data.choices[0].message ||
+      !data.choices[0].message.content
+    ) {
+      return res.status(500).json({ error: 'Unexpected response from AI provider' });
+    }
+
+    const result = data.choices[0].message.content;
 
     res.json({
       result,
       model_used: selectedModel,
       charged: `${PRICE_USD} USDC`
     });
-
   } catch (err) {
     res.status(500).json({ error: 'Inference failed', details: err.message });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`SmartRoute402 live on port ${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`SmartRoute402 live on port ${PORT}`);
+  });
+}
+
+module.exports = app;
