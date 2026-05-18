@@ -301,12 +301,7 @@ app.post('/ai', async (req, res) => {
       return res.status(500).json({ error: data.error.message });
     }
 
-    if (
-      !data.choices ||
-      !data.choices[0] ||
-      !data.choices[0].message ||
-      !data.choices[0].message.content
-    ) {
+    if (!data.choices?.[0]?.message?.content) {
       return res.status(500).json({ error: 'Unexpected response from AI provider' });
     }
 

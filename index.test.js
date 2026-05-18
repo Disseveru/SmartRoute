@@ -47,6 +47,7 @@ afterEach(() => {
 
 function mockGroqResponse(content) {
   return {
+    status: 200,
     json: async () => ({
       choices: [{ message: { content } }]
     })
