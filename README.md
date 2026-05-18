@@ -33,13 +33,17 @@ Set the following environment variables before production use:
 
 - `GEMINI_API_KEY` — Gemini API key
 - `PAYMENT_ADDRESS` — Base wallet that receives x402 payments
-- `PRICE_USDC` — price per call in USD (default `0.02`)
+- `PRICE_USD` — price per call in USD (default `0.02`, legacy `PRICE_USDC` is also accepted)
 - `X402_NETWORK` — CAIP-2 network id (default `eip155:8453`)
 - `FACILITATOR_URL` — x402 facilitator URL (default `https://facilitator.x402.org`)
 - `BASE_URL` — public origin used in OpenAPI `servers` (example: `https://your-api.example.com`)
 - `AGENTCASH_OWNERSHIP_PROOF` — ownership proof string for `x-discovery.ownershipProofs` in `/openapi.json`
 
-`AGENTCASH_OWNERSHIP_PROOF` is set to a placeholder by default so integration is non-blocking until final proof is available.
+An ownership proof is the verification token AgentCash uses to confirm the API origin is controlled by you.
+Use the opaque proof string from the AgentCash onboarding/verification flow (for example, a domain proof token such as `proof_xxx...`) and set it directly as `AGENTCASH_OWNERSHIP_PROOF`.
+Discovery guidance: https://agentcash.dev/docs/discovery
+
+`AGENTCASH_OWNERSHIP_PROOF` uses a placeholder in local/dev. The OpenAPI document only includes `x-discovery.ownershipProofs` when a real proof is configured, and production startup refuses placeholder values.
 
 ## Status
 Live on Base mainnet via Coinbase CDP
