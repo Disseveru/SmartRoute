@@ -6,8 +6,11 @@
     "start": "node index.js"
   },
   "dependencies": {
+    "@x402/core": "^2.12.0",
+    "@x402/evm": "^2.12.0",
+    "@x402/express": "^2.12.0",
+    "cors": "^2.8.5",
     "express": "^4.18.2",
-    "node-fetch": "^2.7.0",
-    "cors": "^2.8.5"
+    "node-fetch": "^2.7.0"
   }
 }

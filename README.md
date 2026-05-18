@@ -9,23 +9,37 @@ No API keys. No subscriptions. Just pay and go.
 Built for AI agents, developers, and anyone who 
 wants instant AI without the setup.
 
-## Endpoint
-POST https://smartroute-production.up.railway.app/ai
+## API endpoints
+- `POST /ai` — payable AI inference route
+- `GET /openapi.json` — AgentCash/OpenAPI discovery document
+- `GET /.well-known/x402` — x402 well-known metadata
 
 ## Request
 {
   "prompt": "your question here",
-  "model": "llama3-8b-8192"
+  "model": "gemini-2.0-flash"
 }
 
 ## Payment
-Include x-payment header with x402 USDC payment on Base network.
+Include a valid x402 payment header.
 Price: 0.02 USDC per request
 
 ## Models available
-- llama3-8b-8192 (fast, default)
-- llama3-70b-8192 (powerful)
-- mixtral-8x7b-32768 (long context)
+- gemini-2.0-flash (fast, default)
+- gemini-1.5-pro (powerful)
+
+## Runtime configuration
+Set the following environment variables before production use:
+
+- `GEMINI_API_KEY` — Gemini API key
+- `PAYMENT_ADDRESS` — Base wallet that receives x402 payments
+- `PRICE_USDC` — price per call in USD (default `0.02`)
+- `X402_NETWORK` — CAIP-2 network id (default `eip155:8453`)
+- `FACILITATOR_URL` — x402 facilitator URL (default `https://facilitator.x402.org`)
+- `BASE_URL` — public origin used in OpenAPI `servers` (example: `https://your-api.example.com`)
+- `AGENTCASH_OWNERSHIP_PROOF` — ownership proof string for `x-discovery.ownershipProofs` in `/openapi.json`
+
+`AGENTCASH_OWNERSHIP_PROOF` is set to a placeholder by default so integration is non-blocking until final proof is available.
 
 ## Status
 Live on Base mainnet via Coinbase CDP
