@@ -1,37 +1,39 @@
-/**
- * SmartRoute402 - unit/integration tests
- * Run with: npm test
- *
- * node-fetch and x402-express are mocked so no real network calls are made.
- */
-
 const request = require('supertest');
 
-// -- Mock x402-express before the app is loaded -------------------------------
-// Simulates the full x402 middleware contract:
-//   No x-payment header  -> 402
-//   Header present       -> next() (real verification happens via facilitator in prod)
-jest.mock('x402-express', () => ({
-  paymentMiddleware: (_payTo, routes) => (req, res, next) => {
+jest.mock('@x402/express', () => ({
+  paymentMiddlewareFromConfig: (routes) => (req, res, next) => {
     const routeKey = `${req.method.toUpperCase()} ${req.path}`;
     if (!routes[routeKey]) return next();
     if (!req.headers['x-payment']) {
       return res.status(402).json({
         error: 'Payment Required',
-        price: process.env.PRICE_USDC || '0.02',
+        price: process.env.PRICE_USD || process.env.PRICE_USDC || '0.02',
         currency: 'USDC',
-        network: 'base',
+        network: process.env.X402_NETWORK || 'eip155:8453'
       });
     }
     next();
-  },
+  }
 }));
 
-// -- Mock node-fetch before the app is loaded ---------------------------------
+jest.mock('@x402/core/server', () => ({
+  HTTPFacilitatorClient: class {
+    async verify() {
+      return { success: true };
+    }
+    async settle() {
+      return { success: true };
+    }
+  }
+}));
+
+jest.mock('@x402/evm/exact/server', () => ({
+  ExactEvmScheme: class {}
+}));
+
 jest.mock('node-fetch');
 const fetch = require('node-fetch');
 
-// -- Load the app (must come after mock setup) ---------------------------------
 let app;
 beforeAll(() => {
   process.env.GROQ_API_KEY = 'test-key';
@@ -43,20 +45,17 @@ afterEach(() => {
   jest.resetAllMocks();
 });
 
-// -- Helper: build a mock Groq response ---------------------------------------
 function mockGroqResponse(content) {
   return {
+    status: 200,
     json: async () => ({
       choices: [{ message: { content } }]
     })
   };
 }
 
-// ---------------------------------------------------------------------------
-// GET /  --  health check
-// ---------------------------------------------------------------------------
 describe('GET /', () => {
-  it('returns service info with status live and all three models', async () => {
+  it('returns service info with status live and models', async () => {
     const res = await request(app).get('/');
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('live');
@@ -69,9 +68,6 @@ describe('GET /', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// POST /ai  --  payment guard
-// ---------------------------------------------------------------------------
 describe('POST /ai - payment guard', () => {
   it('returns 402 when x-payment header is missing', async () => {
     const res = await request(app)
@@ -82,9 +78,6 @@ describe('POST /ai - payment guard', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// POST /ai  --  input validation
-// ---------------------------------------------------------------------------
 describe('POST /ai - input validation', () => {
   it('returns 400 when prompt is missing', async () => {
     const res = await request(app)
@@ -119,9 +112,6 @@ describe('POST /ai - input validation', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// POST /ai  --  successful inference
-// ---------------------------------------------------------------------------
 describe('POST /ai - successful inference', () => {
   it('returns result and model_used with default model when none specified', async () => {
     fetch.mockResolvedValueOnce(mockGroqResponse('The answer is 42.'));
@@ -152,9 +142,6 @@ describe('POST /ai - successful inference', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// POST /ai  --  error handling
-// ---------------------------------------------------------------------------
 describe('POST /ai - error handling', () => {
   it('returns 500 when Groq returns an error object', async () => {
     fetch.mockResolvedValueOnce({

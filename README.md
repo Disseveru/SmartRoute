@@ -4,14 +4,12 @@
 
 ## What it does
 Send any prompt, pay $0.02 USDC per call.  
-No API keys. No subscriptions. Just pay and go.
+No API keys for consumers. No subscriptions.
 
-Built for AI agents, developers, and anyone who wants instant AI without the setup.
-
-## Endpoint
-```
-POST https://smartroute-production.up.railway.app/ai
-```
+## API endpoints
+- `POST /ai` — payable AI inference route
+- `GET /openapi.json` — AgentCash/OpenAPI discovery document
+- `GET /.well-known/x402` — x402 well-known metadata
 
 ## Request
 ```json
@@ -24,7 +22,7 @@ POST https://smartroute-production.up.railway.app/ai
 The `model` field is optional. If omitted, `llama-3.3-70b-versatile` is used.
 
 ## Payment
-Include the `x-payment` header with a valid x402 USDC payment on the Base network.  
+Include a valid `x-payment` header for x402.  
 Price: **0.02 USDC per request**
 
 ## Models available
@@ -43,23 +41,22 @@ Price: **0.02 USDC per request**
 }
 ```
 
-## Health check
-```
-GET https://smartroute-production.up.railway.app/
-```
+## Runtime configuration
+Set the following environment variables before production use:
 
-Returns service info, available models, and pricing.
+- `GROQ_API_KEY` — Groq API key (required)
+- `PAYMENT_ADDRESS` — Base wallet that receives x402 payments (required in production)
+- `PRICE_USD` — price per call in USD (default `0.02`; legacy `PRICE_USDC` is also accepted)
+- `X402_NETWORK` — CAIP-2 network id (default `eip155:8453`)
+- `FACILITATOR_URL` — x402 facilitator URL (default `https://x402.org/facilitator`)
+- `BASE_URL` — public origin used in OpenAPI `servers` (example: `https://your-api.example.com`)
+- `AGENTCASH_OWNERSHIP_PROOF` — ownership proof string for `x-discovery.ownershipProofs` in `/openapi.json`
 
-## Environment variables (for self-hosting)
-See `.env.example` for all required variables.
+An ownership proof is the verification token AgentCash uses to confirm the API origin is controlled by you.  
+Use the opaque proof string from the AgentCash onboarding flow (for example, `proof_xxx...`) and set it as `AGENTCASH_OWNERSHIP_PROOF`.  
+Discovery guidance: https://agentcash.dev/docs/discovery
 
-| Variable | Description | Default |
-|---|---|---|
-| `GROQ_API_KEY` | Your Groq API key (free at console.groq.com) | *(required)* |
-| `PAYMENT_ADDRESS` | Base wallet address to receive USDC payments | *(required)* |
-| `FACILITATOR_URL` | x402 facilitator endpoint for payment verification | `https://x402.org/facilitator` |
-| `PORT` | Port the server listens on | `8080` |
-| `PRICE_USDC` | Price per request in USDC | `0.02` |
+`AGENTCASH_OWNERSHIP_PROOF` uses a placeholder in local/dev. The OpenAPI document only includes `x-discovery.ownershipProofs` when a real proof is configured, and production startup refuses placeholder values.
 
 ## Status
 Live on Base mainnet
